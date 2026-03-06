@@ -1,13 +1,14 @@
+#!/usr/bin/env bash
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                                                                           ║
-# ║   High Finder Forensics v1.0.0                                            ║
+# ║   High Forensic v1.0.0                                                    ║
 # ║                                                                           ║
 # ╠═══════════════════════════════════════════════════════════════════════════╣
 # ║   Autor:   Percio Castelo                                                 ║
 # ║   Contato: percio@evolya.com.br | contato@perciocastelo.com.br            ║
 # ║   Web:     https://perciocastelo.com.br                                   ║
 # ║                                                                           ║
-# ║   Função:  Forense Audit in cPanel                                        ║
+# ║   Função:  Forensic auditing of files in cPanel                           ║
 # ║                                                                           ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
@@ -17,8 +18,95 @@ HF_SCRIPT_VERSION="2026-03-06-userftp-sec1"
 # Marker consumed by plugin wrapper to avoid using stale hf.sh builds.
 HF_USER_MODE_FTP_READY=1
 
+normalize_lang_code() {
+    local raw normalized
+    raw=$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]' | tr '-' '_')
+    raw=${raw%%.*}
+    normalized=${raw#*=}
+
+    case "$normalized" in
+        en|en_*|english*) echo "en"; return 0 ;;
+        pt|pt_*|portugu*) echo "pt"; return 0 ;;
+    esac
+    return 1
+}
+
+detect_lang_from_env() {
+    local key value lang
+    for key in HF_LANG HF_UI_LANG CPANEL_LOCALE CPANEL_LANG LC_ALL LC_MESSAGES LANG HTTP_ACCEPT_LANGUAGE; do
+        value="${!key:-}"
+        [ -z "$value" ] && continue
+        if lang=$(normalize_lang_code "$value"); then
+            echo "$lang"
+            return 0
+        fi
+    done
+    return 1
+}
+
+detect_lang_for_user() {
+    local user="$1"
+    local lang line key value user_file
+
+    if lang=$(detect_lang_from_env); then
+        echo "$lang"
+        return 0
+    fi
+
+    if [[ "$user" =~ ^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,31}$ ]]; then
+        user_file="/var/cpanel/users/$user"
+        if [ -r "$user_file" ]; then
+            while IFS= read -r line; do
+                key="${line%%=*}"
+                value="${line#*=}"
+                case "$key" in
+                    LOCALE|LANG)
+                        if lang=$(normalize_lang_code "$value"); then
+                            echo "$lang"
+                            return 0
+                        fi
+                        ;;
+                esac
+            done < "$user_file"
+        fi
+
+        for path in "/home/$user/.cpanel/nvdata/lang" "/home/$user/.cpanel/lang"; do
+            [ ! -r "$path" ] && continue
+            value=$(cat "$path" 2>/dev/null || true)
+            if lang=$(normalize_lang_code "$value"); then
+                echo "$lang"
+                return 0
+            fi
+        done
+    fi
+
+    echo "pt"
+}
+
+L() {
+    if [ "${HF_LANG_CODE:-pt}" = "en" ]; then
+        printf '%s' "$2"
+    else
+        printf '%s' "$1"
+    fi
+}
+
+HF_LANG_CODE="$(detect_lang_from_env 2>/dev/null || true)"
+[ -z "$HF_LANG_CODE" ] && HF_LANG_CODE="pt"
+
 usage() {
-    cat <<'EOF'
+    if [ "${HF_LANG_CODE:-pt}" = "en" ]; then
+        cat <<'EOF'
+Usage:
+  hf.sh --version
+  hf.sh [--mode full|user] [--no-color] <file_path>
+
+Modes:
+  full  - complete analysis (includes system logs, recommended for root)
+  user  - safe analysis for cPanel account (no privileged logs)
+EOF
+    else
+        cat <<'EOF'
 Uso:
   hf.sh --version
   hf.sh [--mode full|user] [--no-color] <caminho_do_arquivo>
@@ -27,6 +115,7 @@ Modos:
   full  - analise completa (inclui logs de sistema, recomendado para root)
   user  - analise segura para usuario cPanel (sem logs privilegiados)
 EOF
+    fi
 }
 
 MODE="${HF_MODE:-full}"
@@ -35,7 +124,7 @@ NO_COLOR_FLAG=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --mode)
-            [ -z "${2:-}" ] && { echo "Erro: --mode requer valor."; exit 1; }
+            [ -z "${2:-}" ] && { echo "$(L "Erro: --mode requer valor." "Error: --mode requires a value.")"; exit 1; }
             MODE="$2"
             shift 2
             ;;
@@ -60,7 +149,7 @@ while [ $# -gt 0 ]; do
             break
             ;;
         -*)
-            echo "Erro: opção desconhecida: $1"
+            echo "$(L "Erro: opção desconhecida: $1" "Error: unknown option: $1")"
             usage
             exit 1
             ;;
@@ -71,18 +160,18 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$MODE" != "full" ] && [ "$MODE" != "user" ]; then
-    echo "Erro: modo inválido '$MODE'. Use full ou user."
+    echo "$(L "Erro: modo inválido '$MODE'. Use full ou user." "Error: invalid mode '$MODE'. Use full or user.")"
     exit 1
 fi
 
 if [ -z "${1:-}" ] || [ ! -f "$1" ]; then
-    echo "Erro: arquivo inválido."
+    echo "$(L "Erro: arquivo inválido." "Error: invalid file.")"
     usage
     exit 1
 fi
 
 # ==========================================
-# PALETA DE CORES E ESTILOS
+# COLOR AND STYLE PALETTE
 # ==========================================
 if [ "$NO_COLOR_FLAG" -eq 1 ] || [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then
     BOLD=''; RED=''; GREEN=''; YELLOW=''; BLUE=''; CYAN=''; RESET=''
@@ -104,7 +193,7 @@ is_valid_user_name() {
     [[ "$1" =~ ^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,31}$ ]]
 }
 
-# Em modo user, a conta auditada deve seguir o caminho /home/<conta>/...
+# In user mode, the audited account should follow the path /home/<account>/...
 if [ "$RUN_PRIVILEGED_CHECKS" -eq 0 ] && [[ "$FILE_PATH" =~ ^/home/([^/]+)/ ]]; then
     PATH_USER="${BASH_REMATCH[1]}"
     if is_valid_user_name "$PATH_USER"; then
@@ -112,15 +201,17 @@ if [ "$RUN_PRIVILEGED_CHECKS" -eq 0 ] && [[ "$FILE_PATH" =~ ^/home/([^/]+)/ ]]; 
     fi
 fi
 
-# Permite override explícito da conta, usado pelo wrapper do plugin.
+# Allows explicit account override, used by the plugin wrapper.
 if [ -n "${HF_AUDIT_USER:-}" ] && is_valid_user_name "$HF_AUDIT_USER"; then
     USER_NAME="$HF_AUDIT_USER"
 fi
 
 if ! is_valid_user_name "$USER_NAME"; then
-    echo "Erro: usuario de auditoria invalido: '$USER_NAME'."
+    echo "$(L "Erro: usuario de auditoria invalido: '$USER_NAME'." "Error: invalid audit user: '$USER_NAME'.")"
     exit 1
 fi
+
+HF_LANG_CODE="$(detect_lang_for_user "$USER_NAME")"
 
 escape_regex() {
     printf '%s' "$1" | sed 's/[][(){}.^$*+?|\\/]/\\&/g'
@@ -129,8 +220,8 @@ escape_regex() {
 FILE_NAME_REGEX=$(escape_regex "$FILE_NAME")
 USER_NAME_REGEX=$(escape_regex "$USER_NAME")
 
-TOLERANCIA=300 # 5 minutos para envios Web/Painel/FTP
-TOLERANCIA_SSH=1800 # 30 minutos de tolerância para o login do SFTP/SSH
+TOLERANCIA=300 # 5 minutes for Web/Dashboard/FTP submissions
+TOLERANCIA_SSH=1800 # 30-minute grace period for SFTP/SSH login.
 
 # ==========================================
 # DETECÇÃO DE AMBIENTE (CPANEL VS DIRECTADMIN)
@@ -140,80 +231,89 @@ if [ -d "/usr/local/directadmin" ]; then
 elif [ -d "/usr/local/cpanel" ]; then
     PAINEL="cPanel"
 else
-    PAINEL="Linux Puro / Desconhecido"
+    PAINEL="$(L "Linux Puro / Desconhecido" "Bare Linux / Unknown")"
 fi
 
 # ==========================================
-# CABEÇALHO PRINCIPAL
+# MAIN HEADER
 # ==========================================
 echo -e "${CYAN}=================================================================${RESET}"
-echo -e "${BOLD}🔎 AUDITORIA FORENSE DE ARQUIVO${RESET}"
+echo -e "${BOLD}🔎 $(L "AUDITORIA FORENSE DE ARQUIVO" "FILE FORENSIC AUDIT")${RESET}"
 echo -e "${CYAN}=================================================================${RESET}"
-echo -e " 📁 ${BOLD}Arquivo:${RESET} $FILE_NAME"
-echo -e " 👤 ${BOLD}Usuário:${RESET} $USER_NAME"
-echo -e " 📍 ${BOLD}Caminho:${RESET} $FILE_PATH"
-echo -e " 🖥️  ${BOLD}Painel Detectado:${RESET} $PAINEL"
-echo -e " 🧩 ${BOLD}Versão HF:${RESET} $HF_SCRIPT_VERSION"
+echo -e " 📁 ${BOLD}$(L "Arquivo" "File"):${RESET} $FILE_NAME"
+echo -e " 👤 ${BOLD}$(L "Usuário" "User"):${RESET} $USER_NAME"
+echo -e " 📍 ${BOLD}$(L "Caminho" "Path"):${RESET} $FILE_PATH"
+echo -e " 🖥️  ${BOLD}$(L "Painel Detectado" "Detected Panel"):${RESET} $PAINEL"
+echo -e " 🧩 ${BOLD}$(L "Versão HF" "HF Version"):${RESET} $HF_SCRIPT_VERSION"
 if [ "$RUN_PRIVILEGED_CHECKS" -eq 0 ]; then
-    echo -e " ⚙️  ${BOLD}Modo:${RESET} user (seguro para conta cPanel)"
+    echo -e " ⚙️  ${BOLD}$(L "Modo" "Mode"):${RESET} $(L "user (seguro para conta cPanel)" "user (safe for cPanel account)")"
 elif [ "$(id -u)" -ne 0 ]; then
-    echo -e " ⚠️  ${YELLOW}${BOLD}Aviso:${RESET} modo full sem root pode não acessar todos os logs."
+    echo -e " ⚠️  ${YELLOW}${BOLD}$(L "Aviso" "Warning"):${RESET} $(L "modo full sem root pode não acessar todos os logs." "full mode without root may not access all logs.")"
 fi
 echo -e "${CYAN}=================================================================\n${RESET}"
 
 # ==========================================
-# FASE 1: ANÁLISE ESTÁTICA
+# PHASE 1: STATIC ANALYSIS
 # ==========================================
 analyze_security() {
-    echo -e "${BLUE}${BOLD}▶ FASE 1: ANÁLISE ESTÁTICA E SEGURANÇA${RESET}"
+    echo -e "${BLUE}${BOLD}▶ $(L "FASE 1: ANÁLISE ESTÁTICA E SEGURANÇA" "PHASE 1: STATIC ANALYSIS AND SECURITY")${RESET}"
     echo -e "-----------------------------------------------------------------"
     
     PERMISSOES=$(stat -c "%A (%a)" "$FILE_PATH")
     TAMANHO=$(du -h "$FILE_PATH" | cut -f1)
     ATRIBUTOS=$(lsattr "$FILE_PATH" 2>/dev/null | awk '{print $1}')
     
-    echo -e " 📦 ${BOLD}Tamanho:${RESET} $TAMANHO | 🔒 ${BOLD}Permissões:${RESET} $PERMISSOES"
+    echo -e " 📦 ${BOLD}$(L "Tamanho" "Size"):${RESET} $TAMANHO | 🔒 ${BOLD}$(L "Permissões" "Permissions"):${RESET} $PERMISSOES"
     
     if [[ "$ATRIBUTOS" == *"i"* ]]; then
-        echo -e "\n 🚨 ${RED}${BOLD}ALERTA CRÍTICO:${RESET} Arquivo com atributo IMUTÁVEL (chattr +i)."
-        echo -e "    ${YELLOW}Tática comum de Rootkits/Backdoors para impedir exclusão.${RESET}"
+        echo -e "\n 🚨 ${RED}${BOLD}$(L "ALERTA CRÍTICO" "CRITICAL ALERT"):${RESET} $(L "Arquivo com atributo IMUTÁVEL (chattr +i)." "File has IMMUTABLE attribute (chattr +i).")"
+        echo -e "    ${YELLOW}$(L "Tática comum de Rootkits/Backdoors para impedir exclusão." "Common Rootkit/Backdoor tactic to prevent deletion.")${RESET}"
     fi
 
     TIPO_REAL=$(file -b --mime-type "$FILE_PATH")
     EXTENSAO="${FILE_NAME##*.}"
-    echo -e " 🪪 ${BOLD}MIME Type Real:${RESET} $TIPO_REAL"
+    echo -e " 🪪 ${BOLD}$(L "MIME Type Real" "Real MIME Type"):${RESET} $TIPO_REAL"
     
     if [[ "$TIPO_REAL" == *"text"* || "$TIPO_REAL" == *"php"* ]]; then
         if [[ "$EXTENSAO" =~ (jpg|jpeg|png|gif|webp|ico)$ ]]; then
-            echo -e "\n 🎭 ${RED}${BOLD}SPOOFING DETECTADO:${RESET} O arquivo finge ser imagem, mas é código!"
+            echo -e "\n 🎭 ${RED}${BOLD}$(L "SPOOFING DETECTADO" "SPOOFING DETECTED"):${RESET} $(L "O arquivo finge ser imagem, mas é código!" "The file pretends to be an image, but it is code!")"
         fi
         
         MALWARE_SIG=$(grep -Eio "base64_decode|eval\(|system\(|shell_exec|passthru|str_rot13|gzinflate" "$FILE_PATH" | head -n 4 | tr '\n' ' ')
         if [ -n "$MALWARE_SIG" ]; then
-            echo -e " ☠️  ${YELLOW}${BOLD}SINTAXE SUSPEITA:${RESET} ${MALWARE_SIG}"
+            echo -e " ☠️  ${YELLOW}${BOLD}$(L "SINTAXE SUSPEITA" "SUSPICIOUS SYNTAX"):${RESET} ${MALWARE_SIG}"
         fi
     fi
 
     HASH_SHA256=$(sha256sum "$FILE_PATH" | awk '{print $1}')
-    echo -e " 🧬 ${BOLD}Hash SHA-256:${RESET} $HASH_SHA256"
+    echo -e " 🧬 ${BOLD}$(L "Hash SHA-256" "SHA-256 Hash"):${RESET} $HASH_SHA256"
     echo -e " 🔗 ${BOLD}VirusTotal:${RESET}   https://www.virustotal.com/gui/file/$HASH_SHA256\n"
 }
 
 # ==========================================
-# FASE 2: RASTREAMENTO DE LOGS
+# PHASE 2: LOG TRACKING
 # ==========================================
 echo_match() {
     local SERVICO=$1; local IP=$2; local DATA=$3; local ALVO=$4; local ORIGEM=$5; local DETALHE=$6
-    echo -e " ${GREEN}✅ MATCH ENCONTRADO (${SERVICO})${RESET}"
-    echo -e "    ${BOLD}IP Origem:${RESET} $IP"
-    echo -e "    ${BOLD}Data/Hora:${RESET} $DATA"
-    [ -n "$ALVO" ] && echo -e "    ${BOLD}Ação/Alvo:${RESET} $ALVO"
-    echo -e "    ${BOLD}Log Fonte:${RESET} $ORIGEM"
-    echo -e "    ${BOLD}Detalhe:  ${RESET} ${DETALHE:0:110}...\n"
+    if [ "$HF_LANG_CODE" = "en" ]; then
+        echo -e " ${GREEN}✅ MATCH FOUND (${SERVICO})${RESET}"
+        echo -e "    ${BOLD}Source IP:${RESET} $IP"
+        echo -e "    ${BOLD}Date/Time:${RESET} $DATA"
+        [ -n "$ALVO" ] && echo -e "    ${BOLD}Action/Target:${RESET} $ALVO"
+        echo -e "    ${BOLD}Log Source:${RESET} $ORIGEM"
+        echo -e "    ${BOLD}Detail:   ${RESET} ${DETALHE:0:110}...\n"
+    else
+        echo -e " ${GREEN}✅ MATCH ENCONTRADO (${SERVICO})${RESET}"
+        echo -e "    ${BOLD}IP Origem:${RESET} $IP"
+        echo -e "    ${BOLD}Data/Hora:${RESET} $DATA"
+        [ -n "$ALVO" ] && echo -e "    ${BOLD}Ação/Alvo:${RESET} $ALVO"
+        echo -e "    ${BOLD}Log Fonte:${RESET} $ORIGEM"
+        echo -e "    ${BOLD}Detalhe:  ${RESET} ${DETALHE:0:110}...\n"
+    fi
 }
 
 search_panel_api() {
-    echo -e "⏳ ${YELLOW}Buscando requisições no Painel de Controle (API)...${RESET}"
+    echo -e "⏳ ${YELLOW}$(L "Buscando requisições no Painel de Controle (API)..." "Searching Control Panel (API) requests...")${RESET}"
     
     if [ "$PAINEL" == "cPanel" ]; then
         local ALVOS=("/usr/local/cpanel/logs/access_log" "/usr/local/cpanel/logs/access_log.*" "/usr/local/cpanel/logs/archive/access_log.*")
@@ -255,7 +355,7 @@ search_panel_api() {
                             DIFF=$((LOG_EPOCH - M_EPOCH)); [ $DIFF -lt 0 ] && DIFF_ABS=$(( -DIFF )) || DIFF_ABS=$DIFF
                             if [ "$DIFF_ABS" -lt "$TOLERANCIA" ]; then
                                 IP=$(echo "$line" | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | head -1)
-                                echo_match "API DIRECTADMIN" "$IP" "$RAW_DATE" "Gerenciador de Arquivos" "$f" "$line"
+                                echo_match "API DIRECTADMIN" "$IP" "$RAW_DATE" "$(L "Gerenciador de Arquivos" "File Manager")" "$f" "$line"
                             fi
                         fi
                     fi
@@ -266,17 +366,17 @@ search_panel_api() {
 }
 
 search_apache() {
-    echo -e "⏳ ${YELLOW}Buscando requisições no Servidor Web (Apache/Nginx)...${RESET}"
+    echo -e "⏳ ${YELLOW}$(L "Buscando requisições no Servidor Web (Apache/Nginx)..." "Searching Web Server requests (Apache/Nginx)...")${RESET}"
     local DOMAINS=""
     local ALVOS=()
     local REQUEST_REGEX='"POST '
 
     if [ "$RUN_PRIVILEGED_CHECKS" -eq 0 ]; then
-        # Em modo user, aceita GET e POST porque logs acessíveis da conta são limitados.
+        # In user mode, it accepts GET and POST requests because accessible account logs are limited.
         REQUEST_REGEX='"(GET|POST) '
     fi
 
-    # Mapeia domínios de acordo com o painel
+    # Maps domains according to the panel.
     if [ "$PAINEL" == "cPanel" ]; then
         local CP_USER_FILE="/var/cpanel/users/$USER_NAME"
         if [ "$RUN_PRIVILEGED_CHECKS" -eq 1 ] && [ -r "$CP_USER_FILE" ]; then
@@ -314,7 +414,7 @@ search_apache() {
         done
     fi
 
-    # Lógica unificada para logs de acesso web (Padrão Apache)
+    # Unified logic for web access logs (Apache standard or Nginx), filtering by request method and file name, with time tolerance.
     for mask in "${ALVOS[@]}"; do
         for f in $mask; do
             [ ! -f "$f" ] && continue
@@ -341,7 +441,7 @@ search_apache() {
                     fi
                 fi
 
-                # No modo user, mantém evidência se o URL é do arquivo auditado.
+                # In user mode, retains evidence if the URL is from the audited file.
                 if [ "$RUN_PRIVILEGED_CHECKS" -eq 0 ] && [ "$IS_TARGET_URL" -eq 1 ]; then
                     SHOULD_PRINT=1
                 fi
@@ -353,22 +453,22 @@ search_apache() {
                 if [ "$RUN_PRIVILEGED_CHECKS" -eq 0 ]; then
                     SERVICO="HTTP/S USER LOG ${METHOD}"
                 fi
-                [ "$IS_TARGET_URL" -eq 1 ] && ALVO="${URL} (arquivo-alvo)"
-                echo_match "$SERVICO" "$IP" "${RAW_DATE:-Sem data}" "$ALVO" "$f" "$line"
+                [ "$IS_TARGET_URL" -eq 1 ] && ALVO="${URL} $(L "(arquivo-alvo)" "(target-file)")"
+                echo_match "$SERVICO" "$IP" "${RAW_DATE:-$(L "Sem data" "No date")}" "$ALVO" "$f" "$line"
             done
         done
     done
 }
 
 search_ftp() {
-    echo -e "⏳ ${YELLOW}Buscando conexões via FTP (Pure-FTPd / ProFTPd)...${RESET}"
+    echo -e "⏳ ${YELLOW}$(L "Buscando conexões via FTP (Pure-FTPd / ProFTPd)..." "Searching FTP connections (Pure-FTPd / ProFTPd)...")${RESET}"
     local ALVOS=("/var/log/messages*" "/var/log/xferlog*" "/var/log/proftpd/access.log*")
     
     for mask in "${ALVOS[@]}"; do
         for f in $mask; do
             [ ! -f "$f" ] && continue
             
-            # 1. Checagem Pure-FTPd (Syslog)
+            # 1. Pure-FTPd (Syslog) check
             zgrep -ahE "pure-ftpd.*${FILE_NAME_REGEX}.*uploaded" "$f" 2>/dev/null | while read -r line; do
                 RAW_DATE=$(echo "$line" | grep -oE "^[A-Z][a-z]{2} [ 0-9][0-9] [0-9]{2}:[0-9]{2}:[0-9]{2}")
                 if [ -n "$RAW_DATE" ]; then
@@ -383,9 +483,9 @@ search_ftp() {
                 fi
             done
             
-            # 2. Checagem ProFTPd (Formato xferlog, comum no DirectAdmin)
+            # 2. ProFTPd Check (xferlog format, common in DirectAdmin)
             zgrep -ahE " i r ${USER_NAME_REGEX} .*${FILE_NAME_REGEX}" "$f" 2>/dev/null | while read -r line; do
-                # Formato: Thu Mar  5 16:08:18 2026 1 191.189.27.205 4096 /home/user/file b _ i r user ftp 0 * c
+                # Format: Thu Mar  5 16:08:18 2026 1 191.189.27.205 4096 /home/user/file b _ i r user ftp 0 * c
                 RAW_DATE=$(echo "$line" | awk '{print $1" "$2" "$3" "$4" "$5}')
                 if [ -n "$RAW_DATE" ]; then
                     LOG_EPOCH=$(date -d "$RAW_DATE" +%s 2>/dev/null)
@@ -403,7 +503,7 @@ search_ftp() {
 }
 
 search_user_ftp_logs() {
-    echo -e "⏳ ${YELLOW}Buscando logs FTP acessíveis da conta...${RESET}"
+    echo -e "⏳ ${YELLOW}$(L "Buscando logs FTP acessíveis da conta..." "Searching account-accessible FTP logs...")${RESET}"
     local ALVOS=(
         "/home/$USER_NAME/logs/*ftp*_log*"
         "/home/$USER_NAME/logs/*xferlog*"
@@ -439,7 +539,7 @@ search_user_ftp_logs() {
                     IS_TARGET_PATH=1
                 fi
 
-                # Mantem filtro de usuario para reduzir ruído, mas não descarta o arquivo-alvo.
+                # Maintain user filter to reduce noise, but do not discard the target file.
                 if [ "$LOG_USER" != "$USER_NAME" ] && [ "$IS_TARGET_PATH" -ne 1 ]; then
                     continue
                 fi
@@ -456,34 +556,34 @@ search_user_ftp_logs() {
                     fi
                 fi
 
-                # Mesmo fora da tolerância, mantém match quando o arquivo auditado aparece no log FTP da conta.
+                # Even outside the tolerance, retain match when the audited file appears in the account's FTP log.
                 MATCHES=$((MATCHES + 1))
                 if [ "$IS_TARGET_PATH" -eq 1 ]; then
-                    echo_match "FTP USER LOG" "${IP:-N/A}" "${RAW_DATE:-Sem data}" "${ALVO:-Upload} (arquivo-alvo)" "$f" "$line"
+                    echo_match "FTP USER LOG" "${IP:-N/A}" "${RAW_DATE:-$(L "Sem data" "No date")}" "${ALVO:-Upload} $(L "(arquivo-alvo)" "(target-file)")" "$f" "$line"
                 else
-                    echo_match "FTP USER LOG" "${IP:-N/A}" "${RAW_DATE:-Sem data}" "${ALVO:-Upload}" "$f" "$line"
+                    echo_match "FTP USER LOG" "${IP:-N/A}" "${RAW_DATE:-$(L "Sem data" "No date")}" "${ALVO:-Upload}" "$f" "$line"
                 fi
             done < <(zgrep -ahF "/$FILE_NAME" "$f" 2>/dev/null || true)
         done
     done
 
     if [ "$CANDIDATOS" -eq 0 ]; then
-        echo -e " ℹ️  ${YELLOW}Modo user:${RESET} nenhum arquivo de log FTP encontrado em /home/$USER_NAME/logs."
+        echo -e " ℹ️  ${YELLOW}$(L "Modo user" "User mode"):${RESET} $(L "nenhum arquivo de log FTP encontrado em /home/$USER_NAME/logs." "no FTP log file found in /home/$USER_NAME/logs.")"
         return
     fi
 
     if [ "$LEGIVEIS" -eq 0 ]; then
-        echo -e " ⚠️  ${YELLOW}Modo user:${RESET} logs FTP existem, mas sem permissão de leitura para esta conta ($BLOQUEADOS bloqueados)."
+        echo -e " ⚠️  ${YELLOW}$(L "Modo user" "User mode"):${RESET} $(L "logs FTP existem, mas sem permissão de leitura para esta conta ($BLOQUEADOS bloqueados)." "FTP logs exist, but this account has no read permission ($BLOQUEADOS blocked).")"
         return
     fi
 
     if [ "$MATCHES" -eq 0 ]; then
-        echo -e " ℹ️  ${YELLOW}Modo user:${RESET} nenhum match FTP para ${FILE_NAME} nos logs acessíveis."
+        echo -e " ℹ️  ${YELLOW}$(L "Modo user" "User mode"):${RESET} $(L "nenhum match FTP para ${FILE_NAME} nos logs acessíveis." "no FTP match for ${FILE_NAME} in accessible logs.")"
     fi
 }
 
 search_ssh_sftp() {
-    echo -e "⏳ ${YELLOW}Buscando conexões via SSH/SFTP...${RESET}"
+    echo -e "⏳ ${YELLOW}$(L "Buscando conexões via SSH/SFTP..." "Searching SSH/SFTP connections...")${RESET}"
     local ALVOS=("/var/log/secure" "/var/log/secure-*" "/var/log/secure.*" "/var/log/auth.log*")
     for mask in "${ALVOS[@]}"; do
         for f in $mask; do
@@ -496,7 +596,7 @@ search_ssh_sftp() {
                         DIFF=$((LOG_EPOCH - M_EPOCH)); [ $DIFF -lt 0 ] && DIFF_ABS=$(( -DIFF )) || DIFF_ABS=$DIFF
                         if [ "$DIFF_ABS" -lt "$TOLERANCIA_SSH" ]; then
                             IP=$(echo "$line" | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | head -1)
-                            echo_match "SSH/SFTP LOGIN" "$IP" "$RAW_DATE" "Sessão Aberta" "$f" "$line"
+                            echo_match "SSH/SFTP LOGIN" "$IP" "$RAW_DATE" "$(L "Sessão Aberta" "Session Opened")" "$f" "$line"
                         fi
                     fi
                 fi
@@ -506,9 +606,9 @@ search_ssh_sftp() {
 }
 
 search_terminal() {
-    echo -e "⏳ ${YELLOW}Buscando escalonamento de privilégio e comandos locais...${RESET}"
+    echo -e "⏳ ${YELLOW}$(L "Buscando escalonamento de privilégio e comandos locais..." "Searching privilege escalation and local commands...")${RESET}"
     
-    # 1. Busca por alguém que virou o usuário dono do arquivo (su/sudo)
+    # 1. Search for someone who has become the file's owner (su/sudo)
     local ALVOS=("/var/log/secure" "/var/log/secure-*" "/var/log/secure.*" "/var/log/auth.log*")
     for mask in "${ALVOS[@]}"; do
         for f in $mask; do
@@ -520,7 +620,7 @@ search_terminal() {
                     if [ -n "$LOG_EPOCH" ]; then
                         DIFF=$((LOG_EPOCH - M_EPOCH)); [ $DIFF -lt 0 ] && DIFF_ABS=$(( -DIFF )) || DIFF_ABS=$DIFF
                         if [ "$DIFF_ABS" -lt "$TOLERANCIA_SSH" ]; then
-                            echo_match "ESCALONAMENTO (SU/SUDO)" "Terminal Local" "$RAW_DATE" "Sessão Aberta" "$f" "$line"
+                            echo_match "ESCALONAMENTO (SU/SUDO)" "$(L "Terminal Local" "Local Terminal")" "$RAW_DATE" "$(L "Sessão Aberta" "Session Opened")" "$f" "$line"
                         fi
                     fi
                 fi
@@ -528,26 +628,33 @@ search_terminal() {
         done
     done
 
-    # 2. Busca no histórico de comandos do usuário (Sem precisão de tempo)
+    # 2. Search the user's command history (No time precision)
     local BASH_HIST="/root/.bash_history"
     [ "$USER_NAME" != "root" ] && BASH_HIST="/home/$USER_NAME/.bash_history"
     
     if [ -f "$BASH_HIST" ]; then
-        # Pega as últimas 500 linhas do histórico para ver se o nome do arquivo foi digitado
+        # Get the last 500 lines of the history to see if the file name was typed
         MATCH_HIST=$(tail -n 500 "$BASH_HIST" | grep -Fi "$FILE_NAME" | head -n 3)
         if [ -n "$MATCH_HIST" ]; then
-            echo -e " ${GREEN}✅ MATCH ENCONTRADO (BASH HISTORY)${RESET}"
-            echo -e "    ${BOLD}Aviso:${RESET} O histórico não possui carimbo de tempo por padrão."
-            echo -e "    ${BOLD}Log Fonte:${RESET} $BASH_HIST"
-            echo -e "    ${BOLD}Comandos suspeitos:${RESET}"
+            if [ "$HF_LANG_CODE" = "en" ]; then
+                echo -e " ${GREEN}✅ MATCH FOUND (BASH HISTORY)${RESET}"
+                echo -e "    ${BOLD}Warning:${RESET} Bash history does not include timestamps by default."
+                echo -e "    ${BOLD}Log Source:${RESET} $BASH_HIST"
+                echo -e "    ${BOLD}Suspicious commands:${RESET}"
+            else
+                echo -e " ${GREEN}✅ MATCH ENCONTRADO (BASH HISTORY)${RESET}"
+                echo -e "    ${BOLD}Aviso:${RESET} O histórico não possui carimbo de tempo por padrão."
+                echo -e "    ${BOLD}Log Fonte:${RESET} $BASH_HIST"
+                echo -e "    ${BOLD}Comandos suspeitos:${RESET}"
+            fi
             echo -e "    $MATCH_HIST\n"
         fi
     fi
 }
 
-# Ordem de Execução
+# Execution Order
 analyze_security
-echo -e "${BLUE}${BOLD}▶ FASE 2: RASTREAMENTO DE REDE E LOGS${RESET}"
+echo -e "${BLUE}${BOLD}▶ $(L "FASE 2: RASTREAMENTO DE REDE E LOGS" "PHASE 2: NETWORK AND LOG TRACKING")${RESET}"
 echo -e "-----------------------------------------------------------------"
 search_apache
 if [ "$RUN_PRIVILEGED_CHECKS" -eq 1 ]; then
@@ -557,7 +664,7 @@ if [ "$RUN_PRIVILEGED_CHECKS" -eq 1 ]; then
     search_terminal
 else
     search_user_ftp_logs
-    echo -e " ℹ️  ${YELLOW}Modo user:${RESET} verificações privilegiadas (API painel, SSH e terminal) foram ignoradas."
+    echo -e " ℹ️  ${YELLOW}$(L "Modo user" "User mode"):${RESET} $(L "verificações privilegiadas (API painel, SSH e terminal) foram ignoradas." "privileged checks (panel API, SSH and terminal) were skipped.")"
 fi
 
-echo -e "\n${GREEN}${BOLD}🏁 AUDITORIA FINALIZADA.${RESET}\n"
+echo -e "\n${GREEN}${BOLD}🏁 $(L "AUDITORIA FINALIZADA." "AUDIT COMPLETED.")${RESET}\n"

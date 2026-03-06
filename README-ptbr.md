@@ -1,4 +1,4 @@
-# High Finder Forensics (standalone)
+# High Forensic (standalone)
 
 Readme: [EN](README.md)
 

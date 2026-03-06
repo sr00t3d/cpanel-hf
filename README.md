@@ -1,4 +1,4 @@
-# High Finder Forensics (standalone)
+# High Forensic (standalone)
 
 Readme: [BR](README-ptbr.md)
 
