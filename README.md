@@ -1,6 +1,6 @@
 # High Finder Forensics (standalone)
 
-Readme: [EN](README.md)
+Readme: [BR](README-ptbr.md)
 
 ![License](https://img.shields.io/github/license/sr00t3d/hf) ![Shell Script](https://img.shields.io/badge/language-Bash-green.svg)
 
@@ -68,7 +68,7 @@ chmod +x hf.sh
 ### Direct mode
 
 ```bash
-bash <(curl -fsSL 'https://raw.githubusercontent.com/sr00t3d/cpanel-tpm-manager/refs/heads/main/hf.sh') <options>
+bash <(curl -fsSL 'https://raw.githubusercontent.com/sr00t3d/hf/refs/heads/main/hf.sh') <options>
 ```
 
 ## Quick usage

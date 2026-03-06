@@ -67,7 +67,7 @@ chmod +x hf.sh
 ### Modo direto
 
 ```bash
-bash <(curl -fsSL 'https://raw.githubusercontent.com/sr00t3d/cpanel-tpm-manager/refs/heads/main/hf.sh') <options>
+bash <(curl -fsSL 'https://raw.githubusercontent.com/sr00t3d/hf/refs/heads/main/hf.sh') <options>
 ```
 
 ## Uso rápido
