@@ -2,7 +2,7 @@
 
 Readme: [BR](README-ptbr.md)
 
-![License](https://img.shields.io/github/license/sr00t3d/hf) ![Shell Script](https://img.shields.io/badge/language-Bash-green.svg)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.1.0-green.svg)](https://github.com/sr00t3d/cpanel-hf/releases) [![Shell](https://img.shields.io/badge/bash-4.0+-blue.svg)](https://www.gnu.org/software/bash/)
 
 <img width="700" src="hf-cover.webp" />
 
@@ -177,3 +177,47 @@ https://perciocastelo.com.br/blog/audit-uploads-on-cpanel-server.html
 ## License 📄
 
 This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for details.
+
+
+---
+
+## Real Output Example
+
+Captured live on an AlmaLinux 8.10 cPanel/WHM server:
+
+### Full Mode (`HF_LANG=en ./hf.sh --mode full --no-color`)
+
+```text
+$ HF_LANG=en ./hf.sh --mode full --no-color /home/percio/public_html/sample_upload.php
+=================================================================
+FILE FORENSIC AUDIT
+=================================================================
+ File: sample_upload.php
+ User: percio
+ Path: /home/percio/public_html/sample_upload.php
+ Detected Panel: cPanel
+ HF Version: 2026-03-06-userftp-sec1
+=================================================================
+
+PHASE 1: STATIC ANALYSIS AND SECURITY
+-----------------------------------------------------------------
+ Size: 4.0K | Permissions: -rw-r--r-- (644)
+ Real MIME Type: text/x-php
+ SUSPICIOUS SYNTAX: eval( base64_decode
+ SHA-256 Hash: b6fb6a09dc9852fc869efcf89ab034f6710eefde22ccfb6d7feb554c10e8abc3
+ VirusTotal:   https://www.virustotal.com/gui/file/b6fb6a09dc9852fc869efcf89ab034f6710eefde22ccfb6d7feb554c10e8abc3
+
+PHASE 2: NETWORK AND LOG TRACKING
+-----------------------------------------------------------------
+Searching Web Server requests (Apache/Nginx)...
+Searching Control Panel (API) requests...
+Searching FTP connections (Pure-FTPd / ProFTPd)...
+Searching SSH/SFTP connections...
+Searching privilege escalation and local commands...
+
+AUDIT COMPLETED.
+```
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE) for details.

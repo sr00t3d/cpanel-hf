@@ -2,7 +2,7 @@
 
 Readme: [EN](README.md)
 
-![License](https://img.shields.io/github/license/sr00t3d/hf) ![Shell Script](https://img.shields.io/badge/language-Bash-green.svg)
+[![Licenca](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE) [![Versao](https://img.shields.io/badge/version-1.1.0-green.svg)](https://github.com/sr00t3d/cpanel-hf/releases) [![Shell](https://img.shields.io/badge/bash-4.0+-blue.svg)](https://www.gnu.org/software/bash/)
 
 <img width="700" src="hf-cover.webp" />
 
@@ -176,3 +176,47 @@ Para um guia completo, passo a passo, confira meu artigo completo:
 ## Licença 📄
 
 Este projeto está licenciado sob a **GNU General Public License v3.0**. Veja o arquivo [LICENSE](LICENSE) para detalhes.
+
+
+---
+
+## Exemplo de Saida Real
+
+Capturado em servidor AlmaLinux 8.10 com cPanel/WHM:
+
+### Modo User (`HF_LANG=pt ./hf.sh --mode user --no-color`)
+
+```text
+$ HF_LANG=pt ./hf.sh --mode user --no-color /home/percio/public_html/sample_upload.php
+=================================================================
+AUDITORIA FORENSE DE ARQUIVO
+=================================================================
+ Arquivo: sample_upload.php
+ Usuario: percio
+ Caminho: /home/percio/public_html/sample_upload.php
+ Painel Detectado: cPanel
+ Versao HF: 2026-03-06-userftp-sec1
+ Modo: user (seguro para conta cPanel)
+=================================================================
+
+FASE 1: ANALISE ESTATICA E SEGURANCA
+-----------------------------------------------------------------
+ Tamanho: 4.0K | Permissoes: -rw-r--r-- (644)
+ MIME Type Real: text/x-php
+ SINTAXE SUSPEITA: eval( base64_decode
+ Hash SHA-256: b6fb6a09dc9852fc869efcf89ab034f6710eefde22ccfb6d7feb554c10e8abc3
+ VirusTotal:   https://www.virustotal.com/gui/file/b6fb6a09dc9852fc869efcf89ab034f6710eefde22ccfb6d7feb554c10e8abc3
+
+FASE 2: RASTREAMENTO DE REDE E LOGS
+-----------------------------------------------------------------
+Buscando requisicoes no Servidor Web (Apache/Nginx)...
+Buscando logs FTP acessiveis da conta...
+ Modo user: nenhum arquivo de log FTP encontrado em /home/percio/logs.
+ Modo user: verificacoes privilegiadas (API painel, SSH e terminal) foram ignoradas.
+
+AUDITORIA FINALIZADA.
+```
+
+## Licenca
+
+Apache-2.0. Consulte [LICENSE](LICENSE) para detalhes.

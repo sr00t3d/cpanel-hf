@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║                                                                           ║
-# ║   High Forensic v1.0.0                                                    ║
-# ║                                                                           ║
-# ╠═══════════════════════════════════════════════════════════════════════════╣
-# ║   Autor:   Percio Castelo                                                 ║
-# ║   Contato: percio@evolya.com.br | contato@perciocastelo.com.br            ║
-# ║   Web:     https://perciocastelo.com.br                                   ║
-# ║                                                                           ║
-# ║   Função:  Forensic auditing of files in cPanel                           ║
-# ║                                                                           ║
-# ╚═══════════════════════════════════════════════════════════════════════════╝
+# +============================================================================+
+# | hf.sh                                                                      |
+# | High Forensic (cPanel / DirectAdmin) v1.1.0                                |
+# | Read-only forensic auditor correlating static file metadata, MIME          |
+# | spoofing, immutable flags, SHA-256 / VirusTotal links, and time-window     |
+# | web, panel, FTP, SSH/SFTP, and shell history logs.                         |
+# |                                                                            |
+# | Author:  Percio Castelo                                                    |
+# | Contact: percio@evolya.com.br | contato@perciocastelo.com.br               |
+# | Web:     https://perciocastelo.com.br                                      |
+# | Repo:    https://github.com/sr00t3d/cpanel-hf                              |
+# |                                                                            |
+# | Copyright 2024-2026 Percio Castelo                                         |
+# | SPDX-License-Identifier: Apache-2.0                                        |
+# +============================================================================+
 
 set -o pipefail
 PATH="/usr/sbin:/usr/bin:/sbin:/bin"
